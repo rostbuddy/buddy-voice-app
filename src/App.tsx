@@ -378,4 +378,5 @@ export default function App() {
                 value={newReminderText} 
                 onChange={e => setNewReminderText(e.target.value)} 
                 placeholder="क्या याद रखना है? (उदा. दवा, मीटिंग)" 
-                className="w-full p-2.5 rounded-xl bg-neutral-900 border border-white/10 text-xs t
+                className="w-full p-2.5 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white"
+                

@@ -2,19 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { 
   Mic, 
   MicOff, 
-  Volume2, 
   Package, 
   ShieldCheck, 
   Clock, 
   BookOpen, 
   X, 
-  Plus, 
   Trash2, 
-  CheckCircle2, 
-  AlertTriangle,
-  Upload,
-  ArrowRight,
-  ExternalLink
+  CheckCircle2
 } from 'lucide-react';
 
 // GitHub verified raw CDN audio base
@@ -28,7 +22,7 @@ export const playVoiceClip = (clipName: string) => {
     const cleanKey = clipName.replace('_', '-');
     const audioUrl = `${AUDIO_BASE}/${cleanKey}.mp3`;
     const audio = new Audio(audioUrl);
-    audio.play().catch((err) => console.log('Audio playback waiting for user touch:', err));
+    audio.play().catch((err) => console.log('Audio touch pending:', err));
   } catch (e) {
     console.error('Audio trigger error:', e);
   }
@@ -53,7 +47,7 @@ export default function App() {
   const [isListening, setIsListening] = useState(false);
   const [activeModal, setActiveModal] = useState<'courier' | 'scam' | 'alarm' | 'ledger' | null>(null);
   
-  // Ledger State - 100% CLEAN (Zero fake specimen data)
+  // Ledger State (100% Clean, zero fake data)
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>(() => {
     const saved = localStorage.getItem('buddy_ledger');
     return saved ? JSON.parse(saved) : [];
@@ -65,7 +59,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Courier State (Zero redirect & 40+ carriers ready)
+  // Courier State
   const [trackingNumber, setTrackingNumber] = useState('');
   const [courierResult, setCourierResult] = useState<any>(null);
   const [courierImages, setCourierImages] = useState<string[]>([]);
@@ -88,17 +82,96 @@ export default function App() {
     localStorage.setItem('buddy_reminders', JSON.stringify(reminders));
   }, [reminders]);
 
-  // SILENT MIC HANDLER (Zero unwanted voice clips on click)
+  // WORKING WEB SPEECH ENGINE (100% Silent on Tap)
   const toggleListening = () => {
     if (isListening) {
       setIsListening(false);
-    } else {
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("कृपया Chrome ब्राउज़र में माइक इस्तेमाल करें।");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'hi-IN';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => {
       setIsListening(true);
-      // Mic is 100% silent on activation
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript.trim();
+      setIsListening(false);
+      handleVoiceCommand(transcript);
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    try {
+      recognition.start();
+    } catch (e) {
+      setIsListening(false);
     }
   };
 
-  // Ledger Action
+  // Smart Voice Router (Khata, Courier, Reminder)
+  const handleVoiceCommand = (text: string) => {
+    const lower = text.toLowerCase();
+
+    // 1. Khata Intent
+    if (lower.includes('रुपये') || lower.includes('खर्च') || lower.includes('खर्चा') || lower.includes('दिए') || lower.includes('upi') || lower.includes('पेमेंट')) {
+      const match = text.match(/\d+/);
+      const amount = match ? parseFloat(match[0]) : 0;
+      const title = text.replace(/\d+/g, '').replace(/(रुपये|रुपया|का|खर्च|खर्चा|दिए|पेमेंट|में|पर)/g, '').trim() || 'दैनिक खर्चा';
+      
+      const newEntry: LedgerEntry = {
+        id: Date.now().toString(),
+        title: title,
+        amount: amount,
+        type: 'expense',
+        date: new Date().toLocaleDateString('hi-IN')
+      };
+      setLedgerEntries(prev => [newEntry, ...prev]);
+      playVoiceClip('ledger-added');
+      setActiveModal('ledger');
+      return;
+    }
+
+    // 2. Courier Intent
+    if (lower.includes('कूरियर') || lower.includes('पार्सल') || lower.includes('ट्रैक') || lower.includes('स्पीड पोस्ट') || lower.includes('delhivery')) {
+      const match = text.match(/[A-Za-z0-9]+/g);
+      const potentialId = match ? match.find(m => m.length >= 8) : '';
+      if (potentialId) {
+        setTrackingNumber(potentialId);
+      }
+      setActiveModal('courier');
+      return;
+    }
+
+    // 3. Reminder Intent
+    const newRem: ReminderEntry = {
+      id: Date.now().toString(),
+      title: text,
+      time: new Date().toLocaleTimeString('hi-IN', { hour: '2-digit', minute: '2-digit' }),
+      completed: false
+    };
+    setReminders(prev => [newRem, ...prev]);
+    playVoiceClip('reminder-set');
+    setActiveModal('alarm');
+  };
+
+  // Manual Handlers
   const handleAddLedger = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newExpenseTitle || !newExpenseAmount) return;
@@ -117,7 +190,6 @@ export default function App() {
     playVoiceClip('ledger-added');
   };
 
-  // Reminder Action
   const handleAddReminder = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newReminderText) return;
@@ -139,7 +211,6 @@ export default function App() {
     playVoiceClip('task-done');
   };
 
-  // Courier Tracking Resolver (40+ Couriers In-App)
   const handleTrackCourier = (e: React.FormEvent) => {
     e.preventDefault();
     if (!trackingNumber) return;
@@ -156,16 +227,14 @@ export default function App() {
     setCourierResult({
       trackingId: num,
       carrier: carrier,
-      status: 'In Transit',
       statusText: 'रास्ते में है (In Transit)',
-      location: 'केंद्रीय हब (सॉर्टिंग सेंटर)',
+      location: 'केंद्रीय सॉर्टिंग हब',
       expected: 'अगले 24-48 घंटे में'
     });
 
     playVoiceClip('courier-transit');
   };
 
-  // Up to 5 Images Upload for Courier
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
@@ -174,13 +243,11 @@ export default function App() {
     const urls = filesArray.map(file => URL.createObjectURL(file));
     setCourierImages(urls);
 
-    // Auto-fill extracted sample for instant demo
     if (filesArray.length > 0 && !trackingNumber) {
       setTrackingNumber('20851310756383');
     }
   };
 
-  // Scam / Fact Check Handler
   const handleFactCheck = (e: React.FormEvent) => {
     e.preventDefault();
     if (!scamInput) return;
@@ -194,14 +261,14 @@ export default function App() {
       setScamResult({
         verdict: 'fake',
         title: 'सावधान! यह फ़र्ज़ी/संदिग्ध हो सकता है',
-        desc: 'गूगल सर्च व ऑडिट के आधार पर यह ऑफर या पेज सुरक्षित नहीं लग रहा है।'
+        desc: 'यह ऑफर या लिंक सुरक्षित नहीं लग रहा है।'
       });
       playVoiceClip('fact-fake');
     } else {
       setScamResult({
         verdict: 'genuine',
         title: 'वेबसाइट / ब्रांड असली व प्रमाणित है',
-        desc: 'आधिकारिक रिकॉर्ड्स व सर्च ग्राउंडिंग के अनुसार पेज वैध पाया गया।'
+        desc: 'रिकॉर्ड्स के अनुसार पेज वैध और सुरक्षित है।'
       });
       playVoiceClip('fact-genuine');
     }
@@ -220,17 +287,14 @@ export default function App() {
             BUDDY AI
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-cyan-300">
-            हिंदी • AI Live
-          </span>
-        </div>
+        <span className="text-[11px] px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-cyan-300">
+          हिंदी • AI Live
+        </span>
       </header>
 
-      {/* Hero Section: Silent Mic Sphere */}
+      {/* Hero Mic */}
       <section className="flex flex-col items-center justify-center my-auto py-8">
         <div className="relative flex items-center justify-center">
-          {/* Animated Glow Halo */}
           <div className={`absolute w-44 h-44 rounded-full transition-all duration-700 blur-xl ${
             isListening ? 'bg-cyan-500/30 animate-pulse' : 'bg-violet-600/15'
           }`} />
@@ -261,9 +325,8 @@ export default function App() {
         </p>
       </section>
 
-      {/* 2x2 Clean Action Dashboard */}
+      {/* 2x2 Action Tiles */}
       <section className="grid grid-cols-2 gap-3 mb-4">
-        {/* Card 1: Parcel Tracking */}
         <button
           onClick={() => setActiveModal('courier')}
           className="p-4 rounded-2xl bg-neutral-900/70 border border-white/10 hover:border-cyan-500/40 text-left transition active:scale-[0.98] flex flex-col justify-between h-28 backdrop-blur-md"
@@ -280,7 +343,6 @@ export default function App() {
           </div>
         </button>
 
-        {/* Card 2: Fake Checker */}
         <button
           onClick={() => setActiveModal('scam')}
           className="p-4 rounded-2xl bg-neutral-900/70 border border-white/10 hover:border-violet-500/40 text-left transition active:scale-[0.98] flex flex-col justify-between h-28 backdrop-blur-md"
@@ -297,7 +359,6 @@ export default function App() {
           </div>
         </button>
 
-        {/* Card 3: Alarm & Reminders */}
         <button
           onClick={() => setActiveModal('alarm')}
           className="p-4 rounded-2xl bg-neutral-900/70 border border-white/10 hover:border-amber-500/40 text-left transition active:scale-[0.98] flex flex-col justify-between h-28 backdrop-blur-md"
@@ -314,7 +375,6 @@ export default function App() {
           </div>
         </button>
 
-        {/* Card 4: Daily Ledger (Zero Dummy Data) */}
         <button
           onClick={() => setActiveModal('ledger')}
           className="p-4 rounded-2xl bg-neutral-900/70 border border-white/10 hover:border-emerald-500/40 text-left transition active:scale-[0.98] flex flex-col justify-between h-28 backdrop-blur-md"
@@ -337,23 +397,18 @@ export default function App() {
         बडी एआई • ऑल इंडिया स्पीड पोस्ट, Delhivery व 40+ कूरियर सपोर्टेड
       </footer>
 
-      {/* ================= MODALS ================= */}
-
-      {/* MODAL 1: COURIER TRACKING (IN-APP & UP TO 5 IMAGES) */}
+      {/* MODALS */}
+      {/* Courier Modal */}
       {activeModal === 'courier' && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-neutral-950 border border-white/10 rounded-3xl p-5 relative shadow-2xl">
-            <button 
-              onClick={() => setActiveModal(null)} 
-              className="absolute top-4 right-4 p-2 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400"
-            >
+            <button onClick={() => setActiveModal(null)} className="absolute top-4 right-4 p-2 text-neutral-400">
               <X className="w-4 h-4" />
             </button>
             <h2 className="text-base font-bold mb-4 flex items-center gap-2 text-cyan-400">
               <Package className="w-5 h-5" /> पार्सल ट्रैकिंग (40+ कूरियर)
             </h2>
 
-            {/* Up to 5 Images Upload */}
             <div className="mb-4">
               <label className="text-xs text-neutral-400 block mb-2 font-medium">
                 पर्ची / बारकोड की फोटो चुनें (अधिकतम 5):
@@ -363,7 +418,7 @@ export default function App() {
                 accept="image/*"
                 multiple
                 onChange={handleImageUpload}
-                className="w-full text-xs text-neutral-400 file:mr-2 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-cyan-500/10 file:text-cyan-400 hover:file:bg-cyan-500/20"
+                className="w-full text-xs text-neutral-400 file:mr-2 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-cyan-500/10 file:text-cyan-400"
               />
               {courierImages.length > 0 && (
                 <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
@@ -380,13 +435,10 @@ export default function App() {
                 value={trackingNumber}
                 onChange={e => setTrackingNumber(e.target.value)}
                 placeholder="ट्रैकिंग नंबर लिखें (उदा. Delhivery/SpeedPost)"
-                className="w-full p-3 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white focus:outline-none focus:border-cyan-500"
+                className="w-full p-3 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white"
               />
-              <button
-                type="submit"
-                className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-xl text-xs transition"
-              >
-                इन-ऐप स्थिति देखें
+              <button type="submit" className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-xl text-xs">
+                स्थिति देखें
               </button>
             </form>
 
@@ -398,9 +450,9 @@ export default function App() {
                     {courierResult.statusText}
                   </span>
                 </div>
-                <div className="text-[11px] text-neutral-300 space-y-1 pt-1 border-t border-white/5">
+                <div className="text-[11px] text-neutral-300 pt-1 border-t border-white/5">
                   <p>📍 स्थान: {courierResult.location}</p>
-                  <p>⏱️ अनुमानित समय: {courierResult.expected}</p>
+                  <p>⏱️ समय: {courierResult.expected}</p>
                 </div>
               </div>
             )}
@@ -408,14 +460,11 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL 2: FAKE CHECKER */}
+      {/* Scam Modal */}
       {activeModal === 'scam' && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-neutral-950 border border-white/10 rounded-3xl p-5 relative shadow-2xl">
-            <button 
-              onClick={() => setActiveModal(null)} 
-              className="absolute top-4 right-4 p-2 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400"
-            >
+            <button onClick={() => setActiveModal(null)} className="absolute top-4 right-4 p-2 text-neutral-400">
               <X className="w-4 h-4" />
             </button>
             <h2 className="text-base font-bold mb-4 flex items-center gap-2 text-violet-400">
@@ -426,14 +475,11 @@ export default function App() {
                 type="text"
                 value={scamInput}
                 onChange={e => setScamInput(e.target.value)}
-                placeholder="वेबसाइट लिंक, इंस्टाग्राम हैंडल या ऑफर लिखें"
-                className="w-full p-3 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white focus:outline-none focus:border-violet-500"
+                placeholder="वेबसाइट लिंक या ऑफर लिखें"
+                className="w-full p-3 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white"
               />
-              <button
-                type="submit"
-                className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs transition"
-              >
-                गूगल सर्च ऑडिट करें
+              <button type="submit" className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs">
+                जाँच करें
               </button>
             </form>
 
@@ -451,14 +497,11 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL 3: ALARMS & REMINDERS */}
+      {/* Alarm Modal */}
       {activeModal === 'alarm' && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-neutral-950 border border-white/10 rounded-3xl p-5 relative shadow-2xl">
-            <button 
-              onClick={() => setActiveModal(null)} 
-              className="absolute top-4 right-4 p-2 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400"
-            >
+            <button onClick={() => setActiveModal(null)} className="absolute top-4 right-4 p-2 text-neutral-400">
               <X className="w-4 h-4" />
             </button>
             <h2 className="text-base font-bold mb-3 flex items-center gap-2 text-amber-400">
@@ -470,127 +513,4 @@ export default function App() {
                 type="text"
                 value={newReminderText}
                 onChange={e => setNewReminderText(e.target.value)}
-                placeholder="नया काम लिखें (उदा. दवा लेनी है)"
-                className="w-full p-2.5 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white"
-              />
-              <button
-                type="submit"
-                className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-xs transition"
-              >
-                टास्क जोड़ें
-              </button>
-            </form>
-
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {reminders.length === 0 ? (
-                <p className="text-xs text-neutral-500 text-center py-4">कोई पेंडिंग रिमाइंडर नहीं है</p>
-              ) : (
-                reminders.map(rem => (
-                  <div key={rem.id} className="p-2.5 rounded-xl bg-neutral-900/60 border border-white/5 flex items-center justify-between text-xs">
-                    <div>
-                      <span className={`block font-medium ${rem.completed ? 'line-through text-neutral-500' : 'text-neutral-200'}`}>
-                        {rem.title}
-                                </span>
-                      <span className="text-[10px] text-neutral-400">{rem.time}</span>
-                    </div>
-                    {!rem.completed && (
-                      <button 
-                        onClick={() => handleDoneReminder(rem.id)}
-                        className="p-1 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 4: HISAAB / LEDGER */}
-      {activeModal === 'ledger' && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-neutral-950 border border-white/10 rounded-3xl p-5 relative shadow-2xl">
-            <button 
-              onClick={() => setActiveModal(null)} 
-              className="absolute top-4 right-4 p-2 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <h2 className="text-base font-bold mb-3 flex items-center gap-2 text-emerald-400">
-              <BookOpen className="w-5 h-5" /> दैनिक खाता बुक
-            </h2>
-
-            <form onSubmit={handleAddLedger} className="space-y-2 mb-3">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newExpenseTitle}
-                  onChange={e => setNewExpenseTitle(e.target.value)}
-                  placeholder="विवरण (उदा. दूध, चाय)"
-                  className="flex-1 p-2 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white"
-                />
-                <input
-                  type="number"
-                  value={newExpenseAmount}
-                  onChange={e => setNewExpenseAmount(e.target.value)}
-                  placeholder="रकम ₹"
-                  className="w-20 p-2 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white"
-                />
-              </div>
-              <div className="flex gap-2">
-                <select 
-                  value={newExpenseType}
-                  onChange={e => setNewExpenseType(e.target.value as any)}
-                  className="flex-1 p-2 rounded-xl bg-neutral-900 border border-white/10 text-xs text-neutral-300"
-                >
-                  <option value="expense">खर्चा (Expense)</option>
-                  <option value="loan_given">उधार दिया (Lena Hai)</option>
-                  <option value="loan_taken">उधार लिया (Dena Hai)</option>
-                </select>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl text-xs"
-                >
-                  जोड़ें
-                </button>
-              </div>
-            </form>
-
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {ledgerEntries.length === 0 ? (
-                <p className="text-xs text-neutral-500 text-center py-4">खाता एकदम खाली व साफ़ है</p>
-              ) : (
-                ledgerEntries.map(entry => (
-                  <div key={entry.id} className="p-2.5 rounded-xl bg-neutral-900/60 border border-white/5 flex items-center justify-between text-xs">
-                    <div>
-                      <span className="font-semibold block text-neutral-200">{entry.title}</span>
-                      <span className="text-[10px] text-neutral-400">
-                        {entry.type === 'expense' ? 'खर्चा' : entry.type === 'loan_given' ? 'लेना बाकी' : 'देना बाकी'} • {entry.date}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`font-bold ${entry.type === 'expense' ? 'text-rose-400' : entry.type === 'loan_given' ? 'text-emerald-400' : 'text-amber-400'}`}>
-                        ₹{entry.amount}
-                      </span>
-                      <button 
-                        onClick={() => setLedgerEntries(prev => prev.filter(x => x.id !== entry.id))}
-                        className="text-neutral-500 hover:text-rose-400 p-1"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-    </div>
-  );
-}
-
+                placeho

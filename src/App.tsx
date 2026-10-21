@@ -59,7 +59,6 @@ export default function App() {
     if (soundEnabled) playVoiceClip(clip);
   };
 
-  // Ledger Add Handler
   const handleAddLedger = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim() || !newAmount) return;
@@ -72,7 +71,6 @@ export default function App() {
     triggerAudio('ledger-added');
   };
 
-  // Reminder Add & Toggle
   const handleAddReminder = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newReminderText.trim()) return;
@@ -95,7 +93,6 @@ export default function App() {
     }));
   };
 
-  // Courier Check Handler
   const handleCheckCourier = (e: React.FormEvent) => {
     e.preventDefault();
     const clean = trackingId.trim();
@@ -108,7 +105,6 @@ export default function App() {
     triggerAudio('courier-transit');
   };
 
-  // Scam Check Handler
   const handleCheckScam = (e: React.FormEvent) => {
     e.preventDefault();
     if (!scamQuery.trim()) return;
@@ -381,4 +377,5 @@ export default function App() {
                 type="text" 
                 value={newReminderText} 
                 onChange={e => setNewReminderText(e.target.value)} 
-                placeholder="क्या याद रखना है? (उदा. दवा, मीटिंग
+                placeholder="क्या याद रखना है? (उदा. दवा, मीटिंग)" 
+                className="w-full p-2.5 rounded-xl bg-neutral-900 border border-white/10 text-xs t

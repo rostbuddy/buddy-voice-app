@@ -230,4 +230,10 @@ export default function App() {
                 type="text"
                 value={scamInput}
                 onChange={e => setScamInput(e
-        
+                  </div>
+        </div>
+      )}
+    </div>
+  );
+            }
+            

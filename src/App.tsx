@@ -513,4 +513,65 @@ export default function App() {
                 type="text"
                 value={newReminderText}
                 onChange={e => setNewReminderText(e.target.value)}
-                placeho
+                placeholder="विवरण (उदा. चाय, दूध)"
+                  className="flex-1 p-2 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white"
+                />
+                <input
+                  type="number"
+                  value={newExpenseAmount}
+                  onChange={e => setNewExpenseAmount(e.target.value)}
+                  placeholder="रकम ₹"
+                  className="w-20 p-2 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white"
+                />
+              </div>
+              <div className="flex gap-2">
+                <select 
+                  value={newExpenseType}
+                  onChange={e => setNewExpenseType(e.target.value as any)}
+                  className="flex-1 p-2 rounded-xl bg-neutral-900 border border-white/10 text-xs text-neutral-300"
+                >
+                  <option value="expense">खर्चा (Expense)</option>
+                  <option value="loan_given">उधार दिया (Lena Hai)</option>
+                  <option value="loan_taken">उधार लिया (Dena Hai)</option>
+                </select>
+                <button type="submit" className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl text-xs">
+                  जोड़ें
+                </button>
+              </div>
+            </form>
+
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {ledgerEntries.length === 0 ? (
+                <p className="text-xs text-neutral-500 text-center py-4">खाता एकदम खाली व साफ़ है</p>
+              ) : (
+                ledgerEntries.map(entry => (
+                  <div key={entry.id} className="p-2.5 rounded-xl bg-neutral-900/60 border border-white/5 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="font-semibold block text-neutral-200">{entry.title}</span>
+                      <span className="text-[10px] text-neutral-400">
+                        {entry.type === 'expense' ? 'खर्चा' : entry.type === 'loan_given' ? 'लेना बाकी' : 'देना बाकी'} • {entry.date}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-bold ${entry.type === 'expense' ? 'text-rose-400' : entry.type === 'loan_given' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        ₹{entry.amount}
+                      </span>
+                      <button 
+                        onClick={() => setLedgerEntries(prev => prev.filter(x => x.id !== entry.id))}
+                        className="text-neutral-500 hover:text-rose-400 p-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+

@@ -490,4 +490,107 @@ export default function App() {
                     <div>
                       <span className={`block font-medium ${rem.completed ? 'line-through text-neutral-500' : 'text-neutral-200'}`}>
                         {rem.title}
-             
+                                </span>
+                      <span className="text-[10px] text-neutral-400">{rem.time}</span>
+                    </div>
+                    {!rem.completed && (
+                      <button 
+                        onClick={() => handleDoneReminder(rem.id)}
+                        className="p-1 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: HISAAB / LEDGER */}
+      {activeModal === 'ledger' && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-neutral-950 border border-white/10 rounded-3xl p-5 relative shadow-2xl">
+            <button 
+              onClick={() => setActiveModal(null)} 
+              className="absolute top-4 right-4 p-2 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <h2 className="text-base font-bold mb-3 flex items-center gap-2 text-emerald-400">
+              <BookOpen className="w-5 h-5" /> दैनिक खाता बुक
+            </h2>
+
+            <form onSubmit={handleAddLedger} className="space-y-2 mb-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newExpenseTitle}
+                  onChange={e => setNewExpenseTitle(e.target.value)}
+                  placeholder="विवरण (उदा. दूध, चाय)"
+                  className="flex-1 p-2 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white"
+                />
+                <input
+                  type="number"
+                  value={newExpenseAmount}
+                  onChange={e => setNewExpenseAmount(e.target.value)}
+                  placeholder="रकम ₹"
+                  className="w-20 p-2 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white"
+                />
+              </div>
+              <div className="flex gap-2">
+                <select 
+                  value={newExpenseType}
+                  onChange={e => setNewExpenseType(e.target.value as any)}
+                  className="flex-1 p-2 rounded-xl bg-neutral-900 border border-white/10 text-xs text-neutral-300"
+                >
+                  <option value="expense">खर्चा (Expense)</option>
+                  <option value="loan_given">उधार दिया (Lena Hai)</option>
+                  <option value="loan_taken">उधार लिया (Dena Hai)</option>
+                </select>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl text-xs"
+                >
+                  जोड़ें
+                </button>
+              </div>
+            </form>
+
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {ledgerEntries.length === 0 ? (
+                <p className="text-xs text-neutral-500 text-center py-4">खाता एकदम खाली व साफ़ है</p>
+              ) : (
+                ledgerEntries.map(entry => (
+                  <div key={entry.id} className="p-2.5 rounded-xl bg-neutral-900/60 border border-white/5 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="font-semibold block text-neutral-200">{entry.title}</span>
+                      <span className="text-[10px] text-neutral-400">
+                        {entry.type === 'expense' ? 'खर्चा' : entry.type === 'loan_given' ? 'लेना बाकी' : 'देना बाकी'} • {entry.date}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-bold ${entry.type === 'expense' ? 'text-rose-400' : entry.type === 'loan_given' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        ₹{entry.amount}
+                      </span>
+                      <button 
+                        onClick={() => setLedgerEntries(prev => prev.filter(x => x.id !== entry.id))}
+                        className="text-neutral-500 hover:text-rose-400 p-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+

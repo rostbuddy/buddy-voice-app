@@ -1,10 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Package, ShieldAlert, AlarmClock, BookOpen, Mic, 
   Sun, Moon, Volume2, VolumeX, MessageSquare, X, 
   Send, Plus, Trash2, CheckCircle2, ChevronRight, Truck
 } from 'lucide-react';
-import { playVoiceClip } from './soundengine';
+
+// DIRECT IN-APP AUDIO ENGINE (NO EXTERNAL IMPORT ISSUES)
+const CDN_BASE = 'https://cdn.jsdelivr.net/gh/rostbuddy/Buddy-audio@main';
+const playVoiceClip = (clipName: string) => {
+  try {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    const cleanKey = clipName.replace('_', '-');
+    const audio = new Audio(`${CDN_BASE}/${cleanKey}.mp3`);
+    audio.play().catch(e => console.warn('Audio touch required:', e));
+  } catch (err) {
+    console.error('Playback error:', err);
+  }
+};
 
 export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -41,8 +55,7 @@ export default function App() {
   const [feedbackText, setFeedbackText] = useState('');
   const [feedbackSent, setFeedbackSent] = useState(false);
 
-  // Sound trigger helper
-  const triggerAudio = (clip: any) => {
+  const triggerAudio = (clip: string) => {
     if (soundEnabled) playVoiceClip(clip);
   };
 
@@ -59,7 +72,7 @@ export default function App() {
     triggerAudio('ledger-added');
   };
 
-  // Reminder Toggle / Add
+  // Reminder Add & Toggle
   const handleAddReminder = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newReminderText.trim()) return;
@@ -146,11 +159,9 @@ export default function App() {
       {/* 2. CENTER HERO: APPLE INTELLIGENCE AURA & SOUNDWAVES */}
       <section className="px-5 pt-8 pb-6 flex flex-col items-center text-center">
         <div className="relative my-4 flex items-center justify-center">
-          {/* Glowing Aura Rings */}
           <div className="absolute w-44 h-44 rounded-full bg-cyan-500/20 blur-2xl animate-pulse" />
           <div className="absolute w-36 h-36 rounded-full bg-violet-600/20 blur-xl animate-ping duration-1000" />
           
-          {/* Main Sphere */}
           <button 
             onClick={() => triggerAudio('reminder-nudge')}
             className="relative w-28 h-28 rounded-full bg-gradient-to-tr from-cyan-500 via-blue-600 to-violet-600 p-[2px] shadow-[0_0_30px_rgba(6,182,212,0.4)] active:scale-95 transition"
@@ -162,7 +173,6 @@ export default function App() {
           </button>
         </div>
 
-        {/* Ambient Sound Waves */}
         <div className="flex items-center gap-1.5 h-6 my-2">
           <span className="w-1 h-3 bg-cyan-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
           <span className="w-1 h-5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
@@ -237,7 +247,7 @@ export default function App() {
 
         </div>
 
-        {/* 4. DIRECT FEEDBACK BUTTON (BOLD) */}
+        {/* 4. DIRECT FEEDBACK BUTTON */}
         <div 
           onClick={() => setActiveModal('feedback')}
           className={`p-4 rounded-2xl border ${isDark ? 'bg-gradient-to-r from-blue-950/40 to-cyan-950/40 border-cyan-500/20' : 'bg-cyan-50 border-cyan-200'} flex items-center justify-between cursor-pointer`}
@@ -252,8 +262,6 @@ export default function App() {
           <ChevronRight className="w-4 h-4 text-cyan-400" />
         </div>
       </main>
-
-      {/* ===================== MODALS SECTION ===================== */}
 
       {/* MODAL 1: कूरियर ट्रैकर */}
       {activeModal === 'courier' && (
@@ -284,14 +292,13 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL 2: 3-कॉलम हिसाब-किताब (LEDGER) */}
+      {/* MODAL 2: हिसाब-किताब (LEDGER) */}
       {activeModal === 'ledger' && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className={`w-full max-w-md ${isDark ? 'bg-[#0f1422] border-white/10 text-white' : 'bg-white text-slate-900'} border rounded-3xl p-6 relative max-h-[90vh] overflow-y-auto`}>
             <button onClick={() => setActiveModal(null)} className="absolute top-4 right-4 p-2 rounded-xl bg-white/5"><X className="w-5 h-5" /></button>
             <h2 className="text-lg font-bold mb-3 flex items-center gap-2"><BookOpen className="w-5 h-5 text-emerald-400" /> बहीखाता (हिसाब-किताब)</h2>
             
-            {/* 3-Column Summary Cards */}
             <div className="grid grid-cols-3 gap-2 mb-4 text-center">
               <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20">
                 <span className="text-[10px] text-rose-400 block font-medium">खर्चा</span>
@@ -307,7 +314,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Entry Form */}
             <form onSubmit={handleAddLedger} className="space-y-2.5 mb-4">
               <input 
                 type="text" 
@@ -339,7 +345,6 @@ export default function App() {
               </button>
             </form>
 
-            {/* Ledger List */}
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {ledgerEntries.map(entry => (
                 <div key={entry.id} className="p-2.5 rounded-xl bg-neutral-900/60 border border-white/5 flex items-center justify-between text-xs">
@@ -376,8 +381,4 @@ export default function App() {
                 type="text" 
                 value={newReminderText} 
                 onChange={e => setNewReminderText(e.target.value)} 
-                placeholder="क्या याद रखना है? (उदा. दवा, मीटिंग)" 
-                className="w-full p-2.5 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white"
-              />
-              <div className="flex gap-2">
-  
+                placeholder="क्या याद रखना है? (उदा. दवा, मीटिंग

@@ -379,4 +379,19 @@ export default function App() {
                 onChange={e => setNewReminderText(e.target.value)} 
                 placeholder="क्या याद रखना है? (उदा. दवा, मीटिंग)" 
                 className="w-full p-2.5 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white"/> 
-                
+                            <button
+              type="submit"
+              className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-xs transition"
+            >
+              रिमाइंडर जोड़ें
+            </button>
+          </form>
+        </div>
+      </div>
+    )}
+    </div>
+  );
+}
+
+export default App;
+

@@ -1,17 +1,18 @@
 interface Env {
   GEMINI_API_KEY?: string;
+  'Gemini-API'?: string;
   [key: string]: any;
 }
 
 export async function onRequestPost(context: { request: Request; env: Env }) {
   try {
-    // Check both standard name and custom name
-    const apiKey = context.env.GEMINI_API_KEY || context.env['Gemini-API'] || context.env['GEMINI_API'];
+    // Read both variable names
+    const apiKey = context.env.GEMINI_API_KEY || context.env['Gemini-API'];
     
     if (!apiKey) {
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'Cloudflare में GEMINI_API_KEY नहीं मिली। कृपया Settings -> Variables में Key सेव करें।' 
+        error: 'Cloudflare में API Key नहीं मिली। Settings -> Variables चेक करें।' 
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
@@ -20,7 +21,7 @@ export async function onRequestPost(context: { request: Request; env: Env }) {
 
     const { imageBase64 } = (await context.request.json()) as { imageBase64?: string };
     if (!imageBase64) {
-      return new Response(JSON.stringify({ success: false, error: 'फ़ोटो डेटा नहीं मिला।' }), {
+      return new Response(JSON.stringify({ success: false, error: 'फ़ोटो डेटा खाली है।' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -43,7 +44,6 @@ Extract real details without hallucination:
 }
 Return ONLY pure JSON.`;
 
-    // Strictly compliant with Google Gemini REST schema
     const payload = {
       contents: [
         {
@@ -65,7 +65,10 @@ Return ONLY pure JSON.`;
 
     const geminiRes = await fetch(geminiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey 
+      },
       body: JSON.stringify(payload),
     });
 
@@ -73,7 +76,7 @@ Return ONLY pure JSON.`;
       const errText = await geminiRes.text();
       return new Response(JSON.stringify({ 
         success: false, 
-        error: `Gemini API एरर (${geminiRes.status}): ${errText}` 
+        error: `Gemini API Status ${geminiRes.status}: ${errText.slice(0, 150)}` 
       }), {
         status: 502,
         headers: { 'Content-Type': 'application/json' },
@@ -84,22 +87,12 @@ Return ONLY pure JSON.`;
     const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '{}';
     const parsed = JSON.parse(rawText);
 
-    if (!parsed.trackingId) {
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: 'पर्ची से ट्रैकिंग नंबर नहीं पढ़ा जा सका। कृपया कैमरे से सीधी फ़ोटो लें।' 
-      }), {
-        status: 422,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
     return new Response(JSON.stringify({ success: true, data: parsed }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err: any) {
-    return new Response(JSON.stringify({ success: false, error: err.message || 'Server error' }), {
+    return new Response(JSON.stringify({ success: false, error: err.message || 'Server Error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });

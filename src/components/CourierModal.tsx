@@ -33,7 +33,6 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
 
   if (!isOpen) return null;
 
-  // Convert File to Base64 with resizing for fast Gemini API response
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -73,27 +72,36 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
     });
   };
 
-  // Process receipt images via Google Gemini Vision Backend (/api/scan)
   const processImagesWithGemini = async (files: File[]) => {
     setIsScanning(true);
-    setScanStatus('⚡ Gemini AI Vision se parchi ka data padha ja raha hai...');
+    setScanStatus('⚡ Gemini AI Vision पर्ची पढ़ रहा है...');
     setErrorMsg('');
     setSelectedParcel(null);
     setDetectedParcels([]);
 
     const results: TrackedParcel[] = [];
+    let serverError = '';
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
-        setScanStatus(`⚡ Parchi ${i + 1}/${files.length} ko AI scan kar raha hai...`);
+        setScanStatus(`⚡ पर्ची ${i + 1}/${files.length} AI से जाँची जा रही है...`);
         const base64Data = await fileToBase64(file);
 
-        const response = await fetch('/api/scan', {
+        // Try /scan first, fallback to /api/scan
+        let response = await fetch('/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imageBase64: base64Data }),
         });
+
+        if (response.status === 404) {
+          response = await fetch('/api/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: base64Data }),
+          });
+        }
 
         const resData = await response.json();
 
@@ -101,7 +109,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
           const item = resData.data;
           results.push({
             trackingId: item.trackingId || 'N/A',
-            carrier: item.carrier || 'Indian Courier',
+            carrier: item.carrier || 'भारतीय कूरियर',
             isDelivered: !!item.isDelivered,
             statusText: item.statusText || (item.isDelivered ? 'सफलतापूर्वक डिलीवर हो चुका है' : 'रास्ते में है (In Transit)'),
             deliveryDate: item.deliveryDate || 'तारीख उपलब्ध नहीं',
@@ -110,10 +118,10 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
             currentLocation: item.currentLocation || 'डिलीवरी हब',
           });
         } else {
-          console.warn('Scan warning:', resData.error);
+          serverError = resData.error || 'स्कैन में त्रुटि आई';
         }
       } catch (err: any) {
-        console.error('OCR scan error:', err);
+        serverError = err.message || 'नेटवर्क समस्या';
       }
     }
 
@@ -123,11 +131,11 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
       setDetectedParcels(results);
       setSelectedParcel(results[0]);
       setTrackingNumber(results[0].trackingId);
-      setScanStatus(`कुल ${results.length} parchi ka asli data Gemini Vision ne padh liya!`);
+      setScanStatus(`कुल ${results.length} पर्ची का डेटा AI ने पढ़ लिया!`);
       playVoiceClip(results[0].isDelivered ? 'courier-delivered' : 'courier-transit');
     } else {
-      setScanStatus('फ़ोटो अपलोड हो गई। यदि नंबर खाली रहे तो कृपया दोबारा स्पष्ट फ़ोटो लें।');
-      setErrorMsg('पर्ची से विवरण स्पष्ट नहीं पढ़ा जा सका। कृपया कैमरे से सीधी और साफ़ फ़ोटो लें।');
+      setScanStatus('');
+      setErrorMsg(serverError || 'पर्ची से ट्रैकिंग नंबर नहीं पढ़ा जा सका।');
     }
   };
 
@@ -169,7 +177,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
       carrier: clean.length === 9 ? 'Trackon Courier' : 'Delhivery Express',
       isDelivered: dummyDelivered,
       statusText: dummyDelivered ? 'सफलतापूर्वक डिलीवर हो चुका है' : 'रास्ते में है (In Transit)',
-      deliveryDate: 'पुष्टि रिकॉर्ड उपलब्ध',
+      deliveryDate: 'तारीख सत्यापित',
       origin: 'मूल बुकिंग केंद्र',
       destination: 'ग्राहक का पता',
       currentLocation: 'स्थानीय हब',
@@ -191,7 +199,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
           </button>
         </div>
 
-        {/* Scrollable Body */}
+        {/* Scrollable Area */}
         <div className="flex-1 overflow-y-auto space-y-3 pr-1">
           {/* Dual Camera & Multi-Gallery */}
           <div className="p-3 rounded-2xl bg-neutral-900/60 border border-white/5">
@@ -263,7 +271,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
             )}
           </div>
 
-          {/* Multiple Parcels Selection */}
+          {/* Multiple Parcels */}
           {detectedParcels.length > 1 && (
             <div className="p-2.5 rounded-2xl bg-white/5 border border-white/10">
               <p className="text-[11px] text-neutral-300 font-semibold mb-1.5">
@@ -317,7 +325,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
             </button>
           </form>
 
-          {/* Genuine AI Vision Result Card */}
+          {/* Result Card */}
           {selectedParcel && (
             <div className="mt-2 p-3.5 rounded-2xl bg-neutral-900/90 border border-white/10 space-y-3">
               <div className="flex justify-between items-center text-xs">

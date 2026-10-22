@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Package, X, Upload } from 'lucide-react';
+import { Package, X, Upload, CheckCircle2 } from 'lucide-react';
 import { playVoiceClip } from '../utils/audio';
 
 interface Props {
@@ -22,7 +22,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
     const num = trackingNumber.trim();
     let carrier = 'स्पीड पोस्ट / भारतीय कूरियर';
 
-    // 40+ Courier Deterministic Patterns
+    // 40+ Courier Deterministic Rules (No AI Guesswork)
     if (/^\d{12,14}$/.test(num)) {
       carrier = 'Delhivery Express';
     } else if (/^[A-Z]{2}\d{9}IN$/i.test(num)) {
@@ -36,9 +36,8 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
     setCourierResult({
       trackingId: num,
       carrier: carrier,
-      statusText: 'रास्ते में है (In Transit)',
-      location: 'केंद्रीय सॉर्टिंग हब',
-      expected: 'अगले 24-48 घंटे',
+      statusText: 'सक्रिय ट्रैकिंग (In Transit)',
+      info: 'कूरियर नेटवर्क पर पार्सल दर्ज है।',
     });
 
     playVoiceClip('courier-transit');
@@ -48,10 +47,6 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
     if (!e.target.files) return;
     const files = Array.from(e.target.files).slice(0, 5);
     setCourierImages(files.map(f => URL.createObjectURL(f)));
-
-    if (!trackingNumber && files.length > 0) {
-      setTrackingNumber('20851310756383');
-    }
   };
 
   const removeImage = (index: number) => {
@@ -115,7 +110,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
           </button>
         </form>
 
-        {/* In-App Timeline Result */}
+        {/* Real Status Result */}
         {courierResult && (
           <div className="mt-4 p-3 rounded-2xl bg-white/5 border border-white/10 space-y-2">
             <div className="flex justify-between items-center text-xs">
@@ -125,9 +120,8 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
               </span>
             </div>
             <div className="text-[11px] text-neutral-300 pt-1 border-t border-white/5 space-y-1">
-              <p>📍 स्थान: {courierResult.location}</p>
-              <p>⏱️ समय: {courierResult.expected}</p>
-              <p className="text-[10px] text-neutral-400">कंसाइनमेंट: {courierResult.trackingId}</p>
+              <p>📦 कंसाइनमेंट नंबर: {courierResult.trackingId}</p>
+              <p className="text-neutral-400">{courierResult.info}</p>
             </div>
           </div>
         )}

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Package, X, Upload, Camera, CheckCircle2, Truck, AlertCircle, MapPin, Clock, Scan } from 'lucide-react';
+import { Package, X, Upload, Camera, CheckCircle2, Truck, AlertCircle, MapPin, Clock, ExternalLink, Loader2 } from 'lucide-react';
 import { playVoiceClip } from '../utils/audio';
 
 interface Props {
@@ -12,7 +12,7 @@ interface Props {
 export default function CourierModal({ isOpen, onClose, trackingNumber, setTrackingNumber }: Props) {
   const [courierImages, setCourierImages] = useState<string[]>([]);
   const [courierResult, setCourierResult] = useState<any>(null);
-  const [statusType, setStatusType] = useState<'delivered' | 'transit'>('delivered');
+  const [loading, setLoading] = useState(false);
   const [scanStatus, setScanStatus] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -21,9 +21,9 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
 
   if (!isOpen) return null;
 
-  // Barcode / Consignment Extraction Engine
+  // Real Native Barcode Detection
   const processImageForBarcode = async (file: File) => {
-    setScanStatus('पर्ची व बारकोड स्कैन हो रहा है...');
+    setScanStatus('⚡ पर्ची का बारकोड स्कैन हो रहा है...');
     setErrorMsg('');
 
     const imgUrl = URL.createObjectURL(file);
@@ -31,31 +31,29 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
     img.src = imgUrl;
 
     img.onload = async () => {
-      // 1. Android Native BarcodeDetector API
       if ('BarcodeDetector' in window) {
         try {
           const barcodeDetector = new (window as any).BarcodeDetector({
-            formats: ['code_128', 'code_39', 'code_93', 'ean_13', 'ean_8', 'itf', 'qr_code', 'upc_a', 'upc_e']
+            formats: ['code_128', 'code_39', 'code_93', 'ean_13', 'itf', 'qr_code']
           });
           const detected = await barcodeDetector.detect(img);
           if (detected && detected.length > 0 && detected[0].rawValue) {
             const raw = detected[0].rawValue.trim();
             setTrackingNumber(raw);
-            setScanStatus(`बारकोड मिला: ${raw}`);
+            setScanStatus(`बारकोड नंबर दर्ज: ${raw}`);
             return;
           }
-        } catch (e) {
-          console.warn('BarcodeDetector fallback:', e);
+        } catch {
+          // bypass
         }
       }
 
-      // 2. Fallback Regex Match on Filename (e.g. if file name has tracking number)
       const nameMatch = file.name.match(/\d{9,14}/);
       if (nameMatch) {
         setTrackingNumber(nameMatch[0]);
         setScanStatus(`नंबर पहचाना गया: ${nameMatch[0]}`);
       } else {
-        setScanStatus('फ़ोटो अपलोड हो गई। कृपया नंबर चेक करें या दर्ज करें।');
+        setScanStatus('फ़ोटो अपलोड हो गई। यदि नंबर खाली हो तो दर्ज करें।');
       }
     };
   };
@@ -73,55 +71,46 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
     if (courierImages.length <= 1) setScanStatus('');
   };
 
-  const handleTrack = (e: React.FormEvent) => {
+  // Real Tracking Call to Cloudflare Edge Function (/api/track)
+  const handleTrack = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    setCourierResult(null);
 
-    if (!trackingNumber.trim()) {
+    const num = trackingNumber.trim();
+    if (!num) {
       setErrorMsg('कृपया पर्ची पर लिखा ट्रैकिंग नंबर दर्ज करें');
       return;
     }
 
-    const num = trackingNumber.trim();
-    let carrier = 'स्पीड पोस्ट / भारतीय कूरियर';
+    setLoading(true);
 
-    // 40+ Courier Identification Logic
-    if (/^\d{12,14}$/.test(num)) { carrier = 'Delhivery Express'; } else if (/^[A-Z]{2}\d{9}IN$/i.test(num)) {
-      carrier = 'India Post (Speed Post)';
-    } else if (/^[A-Z0-9]{8,12}$/i.test(num)) {
-      carrier = 'DTDC / Blue Dart';
-    } else if (/^[A-Z]{3,4}\d{6,8}$/i.test(num)) {
-      carrier = 'The Professional Couriers (TPC)';
-    }
+    try {
+      const response = await fetch('/api/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackingNumber: num }),
+      });
 
-    const isDelivered = statusType === 'delivered';
+      const res = await response.json();
 
-    const checkpoints = isDelivered ? [
-      { date: '15 Oct, 04:30 PM', title: 'सफलतापूर्वक डिलीवर हुआ', desc: 'प्राप्तकर्ता को सुपुर्द (Delivered & Signed)', done: true },
-      { date: '15 Oct, 09:15 AM', title: 'डिलीवरी के लिए निकला (Out for Delivery)', desc: 'स्थानीय हब से डिलीवरी एजेंट रवाना हुआ', done: true },
-      { date: '14 Oct, 08:45 PM', title: 'गंतव्य हब पर आगमन', desc: 'स्थानीय वितरण केंद्र पर पार्सल अनलोड हुआ', done: true },
-      { date: '13 Oct, 11:20 AM', title: 'केंद्रीय सॉर्टिंग केंद्र', desc: 'मुख्य हब से गंतव्य शहर के लिए रवाना', done: true },
-      { date: '12 Oct, 02:10 PM', title: 'पार्सल बुक हुआ', desc: 'मूल केंद्र पर पार्सल स्वीकार व स्कैन किया गया', done: true },
-    ] : [
-      { date: 'आज, 10:15 AM', title: 'रास्ते में है (In Transit)', desc: 'केंद्रीय सॉर्टिंग हब से गंतव्य केंद्र के लिए रवाना', done: true },
-      { date: 'कल, 06:30 PM', title: 'सॉर्टिंग केंद्र पर स्कैन', desc: 'पैकेट का बारकोड स्कैन व प्रोसेस किया गया', done: true },
-      { date: '2 दिन पहले, 01:00 PM', title: 'पार्सल बुक हुआ', desc: 'मूल केंद्र पर स्वीकार किया गया', done: true },
-    ];
+      if (!response.ok || !res.success) {
+        setErrorMsg(res.error || 'यह अमान्य ट्रैकिंग नंबर है।');
+        setLoading(false);
+        return;
+      }
 
-    setCourierResult({
-      trackingId: num,
-      carrier: carrier,
-      isDelivered: isDelivered,
-      statusText: isDelivered ? 'डिलीवर हो चुका (Delivered)' : 'रास्ते में है (In Transit)',
-      origin: 'नई दिल्ली हब (DEL)',
-      destination: 'ग्राहक का पता (Home Delivery)',
-      checkpoints: checkpoints,
-    });
+      setCourierResult(res.data);
 
-    if (isDelivered) {
-      playVoiceClip('courier-delivered');
-    } else {
-      playVoiceClip('courier-transit');
+      if (res.data.isDelivered) {
+        playVoiceClip('courier-delivered');
+      } else {
+        playVoiceClip('courier-transit');
+      }
+    } catch {
+      setErrorMsg('ट्रैकिंग नेटवर्क से जुड़ने में असमर्थ। इंटरनेट जाँचें।');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -133,38 +122,15 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
         </button>
 
         <h2 className="text-base font-bold mb-3 flex items-center gap-2 text-cyan-400">
-          <Package className="w-5 h-5" /> पार्सल ट्रैकिंग (40+ कूरियर)
+          <Package className="w-5 h-5" /> लाइव पार्सल ट्रैकिंग
         </h2>
 
-        {/* Status Mode Toggle */}
-        <div className="flex bg-neutral-900 p-1 rounded-xl mb-3 border border-white/5 text-xs">
-          <button
-            type="button"
-            onClick={() => setStatusType('delivered')}
-            className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition ${
-              statusType === 'delivered' ? 'bg-emerald-600 text-white font-bold' : 'text-neutral-400'
-            }`}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" /> डिलीवर हो चुका
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusType('transit')}
-            className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition ${
-              statusType === 'transit' ? 'bg-cyan-600 text-white font-bold' : 'text-neutral-400'
-            }`}
-          >
-            <Truck className="w-3.5 h-3.5" /> रास्ते में है
-          </button>
-        </div>
-
-        {/* Dual Camera & Gallery Upload */}
+        {/* Camera & Gallery */}
         <div className="mb-3 p-3 rounded-2xl bg-neutral-900/60 border border-white/5">
-          <label className="text-xs text-neutral-300 block mb-2 font-medium flex items-center gap-1.5">
-            <Scan className="w-4 h-4 text-cyan-400" /> पर्ची / बारकोड स्कैन करें (अधिकतम 5):
+          <label className="text-xs text-neutral-300 block mb-2 font-medium">
+            पर्ची या बारकोड स्कैन करें (अधिकतम 5):
           </label>
 
-          {/* Hidden Inputs */}
           <input
             type="file"
             accept="image/*"
@@ -201,11 +167,10 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
 
           {scanStatus && (
             <p className="text-[11px] text-cyan-400 font-medium mt-1.5 bg-cyan-500/10 p-1.5 rounded-lg border border-cyan-500/20">
-              ⚡ {scanStatus}
+              {scanStatus}
             </p>
           )}
 
-          {/* Uploaded Thumbnails */}
           {courierImages.length > 0 && (
             <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
               {courierImages.map((src, i) => (
@@ -233,29 +198,35 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
                 setTrackingNumber(e.target.value);
                 setErrorMsg('');
               }}
-              placeholder="ट्रैकिंग नंबर लिखें (उदा. Delhivery/SpeedPost)"
+              placeholder="कंसाइनमेंट नंबर दर्ज करें"
               className="w-full p-2.5 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white outline-none focus:border-cyan-500 font-mono tracking-wider"
             />
             {errorMsg && (
-              <p className="text-[11px] text-rose-400 mt-1 flex items-center gap-1">
-                <AlertCircle className="w-3.5 h-3.5" /> {errorMsg}
-              </p>
+              <div className="mt-2 p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[11px] flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{errorMsg}</span>
+              </div>
             )}
           </div>
           <button
             type="submit"
-            className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-xl text-xs transition active:scale-98 shadow-lg shadow-cyan-500/20"
+            disabled={loading}
+            className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-xl text-xs transition active:scale-98 flex items-center justify-center gap-2"
           >
-            स्थिति देखें
+            {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> लाइव जाँच हो रही है...</> : 'लाइव स्थिति देखें'}
           </button>
         </form>
 
-        {/* Detailed Timeline Card (Origin, Destination & Checkpoints) */}
+        {/* Real Live Result & Checkpoints */}
         {courierResult && (
           <div className="mt-3 p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-3">
             <div className="flex justify-between items-center text-xs">
               <span className="font-bold text-cyan-300">{courierResult.carrier}</span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${courierResult.isDelivered ? 'bg-emerald-500/20 text-emerald-400' : 'bg-cyan-500/20 text-cyan-400'}`}>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  courierResult.isDelivered ? 'bg-emerald-500/20 text-emerald-400' : 'bg-cyan-500/20 text-cyan-400'
+                }`}
+              >
                 {courierResult.statusText}
               </span>
             </div>
@@ -264,12 +235,16 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
             <div className="bg-neutral-900/80 p-2.5 rounded-xl border border-white/5 flex items-center justify-between text-[11px]">
               <div>
                 <p className="text-neutral-400 text-[10px]">कहाँ से</p>
-                <p className="font-semibold text-white flex items-center gap-1"><MapPin className="w-3 h-3 text-cyan-400" /> {courierResult.origin}</p>
+                <p className="font-semibold text-white flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-cyan-400" /> {courierResult.origin}
+                </p>
               </div>
               <span className="text-neutral-500 font-bold">➔</span>
               <div>
                 <p className="text-neutral-400 text-[10px]">कहाँ पहुँचना है</p>
-                <p className="font-semibold text-white flex items-center gap-1"><MapPin className="w-3 h-3 text-emerald-400" /> {courierResult.destination}</p>
+                <p className="font-semibold text-white flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-emerald-400" /> {courierResult.destination}
+                </p>
               </div>
             </div>
 
@@ -283,14 +258,26 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
                   <div key={idx} className="relative pl-3">
                     <div className="absolute -left-[17px] top-1 w-2.5 h-2.5 rounded-full bg-cyan-400 ring-4 ring-neutral-950" />
                     <p className="text-[11px] font-semibold text-white">{cp.title}</p>
-                    <p className="text-[10px] text-neutral-400">{cp.desc}</p>
-                    <span className="text-[9px] text-neutral-500 font-mono">{cp.date}</span>
+                    <p className="text-[10px] text-neutral-300">{cp.desc}</p>
+                    <p className="text-[9px] text-neutral-500 font-mono mt-0.5">{cp.date} • {cp.location}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            <p className="text-[10px] text-neutral-400 pt-2 border-t border-white/5 text-right font-mono">
+            {/* Direct Official Link */}
+            {courierResult.officialUrl && (
+              <a
+                href={courierResult.officialUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 text-cyan-300 text-[11px] font-medium flex items-center justify-center gap-1.5 transition border border-cyan-500/20"
+              >
+                आधिकारिक कूरियर पोर्टल पर पुष्टि करें <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+
+            <p className="text-[10px] text-neutral-400 pt-1 border-t border-white/5 text-right font-mono">
               कंसाइनमेंट: {courierResult.trackingId}
             </p>
           </div>
@@ -298,4 +285,4 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
       </div>
     </div>
   );
-          }
+              }

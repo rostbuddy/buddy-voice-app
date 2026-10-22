@@ -33,14 +33,15 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
 
   if (!isOpen) return null;
 
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
+  // Compress & resize image to lightweight 800px JPEG for fast and reliable AI scan
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const maxDim = 1200;
+          const maxDim = 800;
           let width = img.width;
           let height = img.height;
 
@@ -59,15 +60,15 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.85));
+            resolve(canvas.toDataURL('image/jpeg', 0.65));
           } else {
             resolve(e.target?.result as string);
           }
         };
-        img.onerror = reject;
+        img.onerror = () => resolve('');
         img.src = e.target?.result as string;
       };
-      reader.onerror = reject;
+      reader.onerror = () => resolve('');
       reader.readAsDataURL(file);
     });
   };
@@ -86,9 +87,14 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
       const file = files[i];
       try {
         setScanStatus(`⚡ पर्ची ${i + 1}/${files.length} AI से जाँची जा रही है...`);
-        const base64Data = await fileToBase64(file);
+        const base64Data = await compressImage(file);
 
-        // Try /scan first, fallback to /api/scan
+        if (!base64Data) {
+          serverError = 'फ़ोटो प्रोसेस नहीं हो सकी।';
+          continue;
+        }
+
+        // Send to backend functions
         let response = await fetch('/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -103,7 +109,13 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
           });
         }
 
-        const resData = await response.json();
+        const rawText = await response.text();
+        let resData: any = {};
+        try {
+          resData = rawText ? JSON.parse(rawText) : {};
+        } catch {
+          serverError = `सर्वर त्रुटि (${response.status}): ${rawText.slice(0, 80)}`;
+        }
 
         if (resData.success && resData.data) {
           const item = resData.data;
@@ -117,11 +129,11 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
             destination: item.destination || 'ग्राहक का पता',
             currentLocation: item.currentLocation || 'डिलीवरी हब',
           });
-        } else {
-          serverError = resData.error || 'स्कैन में त्रुटि आई';
+        } else if (resData.error) {
+          serverError = resData.error;
         }
       } catch (err: any) {
-        serverError = err.message || 'नेटवर्क समस्या';
+        serverError = err.message || 'नेटवर्क कनेक्शन त्रुटि';
       }
     }
 
@@ -131,7 +143,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
       setDetectedParcels(results);
       setSelectedParcel(results[0]);
       setTrackingNumber(results[0].trackingId);
-      setScanStatus(`कुल ${results.length} पर्ची का डेटा AI ने पढ़ लिया!`);
+      setScanStatus(`कुल ${results.length} पर्ची का डेटा AI ने खुद पढ़ लिया!`);
       playVoiceClip(results[0].isDelivered ? 'courier-delivered' : 'courier-transit');
     } else {
       setScanStatus('');

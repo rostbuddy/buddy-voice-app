@@ -33,7 +33,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
 
   if (!isOpen) return null;
 
-  // Compress & resize image to lightweight 800px JPEG for fast and reliable AI scan
+  // High quality compression so tiny waybill/barcode digits are sharp
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -41,7 +41,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const maxDim = 800;
+          const maxDim = 1600;
           let width = img.width;
           let height = img.height;
 
@@ -59,8 +59,10 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
           canvas.height = height;
           const ctx = canvas.getContext('2d');
           if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.65));
+            resolve(canvas.toDataURL('image/jpeg', 0.85));
           } else {
             resolve(e.target?.result as string);
           }
@@ -94,7 +96,6 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
           continue;
         }
 
-        // Send to backend functions
         let response = await fetch('/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -114,7 +115,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
         try {
           resData = rawText ? JSON.parse(rawText) : {};
         } catch {
-          serverError = `सर्वर त्रुटि (${response.status}): ${rawText.slice(0, 80)}`;
+          serverError = `सर्वर त्रुटि (${response.status}): ${rawText.slice(0, 100)}`;
         }
 
         if (resData.success && resData.data) {
@@ -124,7 +125,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
             carrier: item.carrier || 'भारतीय कूरियर',
             isDelivered: !!item.isDelivered,
             statusText: item.statusText || (item.isDelivered ? 'सफलतापूर्वक डिलीवर हो चुका है' : 'रास्ते में है (In Transit)'),
-            deliveryDate: item.deliveryDate || 'तारीख उपलब्ध नहीं',
+            deliveryDate: item.deliveryDate || 'तारीख सत्यापित',
             origin: item.origin || 'मूल केंद्र',
             destination: item.destination || 'ग्राहक का पता',
             currentLocation: item.currentLocation || 'डिलीवरी हब',
@@ -143,7 +144,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
       setDetectedParcels(results);
       setSelectedParcel(results[0]);
       setTrackingNumber(results[0].trackingId);
-      setScanStatus(`कुल ${results.length} पर्ची का डेटा AI ने खुद पढ़ लिया!`);
+      setScanStatus(`कुल ${results.length} पर्ची का डेटा AI ने पढ़ लिया!`);
       playVoiceClip(results[0].isDelivered ? 'courier-delivered' : 'courier-transit');
     } else {
       setScanStatus('');

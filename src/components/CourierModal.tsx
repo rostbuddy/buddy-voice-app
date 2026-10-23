@@ -33,7 +33,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
 
   if (!isOpen) return null;
 
-  // Cloudflare की 1MB लिमिट के अंदर लाने के लिए स्मार्ट कंप्रेशन (नंबर बिल्कुल साफ रहेंगे)
+  // 1200px शार्प और सुरक्षित कंप्रेशन (Cloudflare 1MB लिमिट के अंदर)
   const processImageToSafeBase64 = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -83,7 +83,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
     setDetectedParcels([]);
 
     const results: TrackedParcel[] = [];
-    let failureMsg = '';
+    let exactError = '';
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -92,41 +92,52 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
         const base64Data = await processImageToSafeBase64(file);
 
         if (!base64Data) {
-          failureMsg = 'फ़ोटो लोड नहीं हो सकी।';
+          exactError = 'फ़ोटो लोड करने में विफल।';
           continue;
         }
 
-        const response = await fetch('/scan', {
+        // पहले /scan पर कॉल करें, अगर 404 आए तो /api/scan भी चेक करें
+        let response = await fetch('/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imageBase64: base64Data }),
         });
+
+        if (response.status === 404) {
+          response = await fetch('/api/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: base64Data }),
+          });
+        }
 
         const rawText = await response.text();
         let resData: any = {};
         try {
           resData = rawText ? JSON.parse(rawText) : {};
         } catch {
-          failureMsg = `सर्वर से उत्तर नहीं मिला (${response.status})`;
+          exactError = `HTTP ${response.status}: ${rawText.slice(0, 150)}`;
         }
 
         if (resData.success && resData.data) {
           const item = resData.data;
           results.push({
-            trackingId: item.trackingId || 'पर्ची सत्यापित',
+            trackingId: item.trackingId || 'सत्यापित पर्ची',
             carrier: item.carrier || 'भारतीय कूरियर',
             isDelivered: !!item.isDelivered,
             statusText: item.statusText || 'रास्ते में है (In Transit)',
-            deliveryDate: item.deliveryDate || 'तारीख सत्यापित',
+            deliveryDate: item.deliveryDate || 'आज की तारीख',
             origin: item.origin || 'मूल केंद्र',
-            destination: item.destination || 'ग्राहक का पता',
+            destination: item.destination || 'ग्राहक पता',
             currentLocation: item.currentLocation || 'डिलीवरी हब',
           });
         } else if (resData.error) {
-          failureMsg = resData.error;
+          exactError = resData.error;
+        } else if (!exactError) {
+          exactError = `सर्वर रिस्पॉन्स: ${rawText.slice(0, 120)}`;
         }
       } catch (err: any) {
-        failureMsg = err.message || 'नेटवर्क समस्या';
+        exactError = `नेटवर्क: ${err.message || 'कनेक्शन समस्या'}`;
       }
     }
 
@@ -136,18 +147,18 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
       setDetectedParcels(results);
       setSelectedParcel(results[0]);
       setTrackingNumber(results[0].trackingId);
-      setScanStatus(`सफलतापूर्वक डेटा प्राप्त हुआ!`);
+      setScanStatus('डेटा प्राप्त हुआ!');
       playVoiceClip(results[0].isDelivered ? 'courier-delivered' : 'courier-transit');
     } else {
       setScanStatus('');
-      setErrorMsg(failureMsg || 'पर्ची से विवरण नहीं पढ़ा जा सका।');
+      setErrorMsg(exactError || 'कोई डेटा नहीं मिला');
     }
   };
 
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const newFiles = Array.from(files).slice(0, 5);
-    setCourierImages(newFiles.map(f => URL.createObjectURL(f)));
+    setCourierImages(newFiles.map((f) => URL.createObjectURL(f)));
     processImages(newFiles);
   };
 
@@ -176,7 +187,6 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3">
       <div className="w-full max-w-md bg-neutral-950 border border-white/10 rounded-3xl p-4 relative shadow-2xl max-h-[94vh] flex flex-col">
-        {/* Header */}
         <div className="flex justify-between items-center mb-3">
           <h2 className="text-base font-bold flex items-center gap-2 text-cyan-400">
             <Package className="w-5 h-5" /> पार्सल ट्रैकिंग (AI विज़न)
@@ -187,7 +197,6 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-          {/* Controls */}
           <div className="p-3 rounded-2xl bg-neutral-900/60 border border-white/5">
             <label className="text-xs text-neutral-300 block mb-2 font-medium">
               पर्ची स्कैन करें या फ़ोटो चुनें:
@@ -198,7 +207,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
               accept="image/*"
               capture="environment"
               ref={cameraInputRef}
-              onChange={e => handleFiles(e.target.files)}
+              onChange={(e) => handleFiles(e.target.files)}
               className="hidden"
             />
             <input
@@ -206,7 +215,7 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
               accept="image/*"
               multiple
               ref={fileInputRef}
-              onChange={e => handleFiles(e.target.files)}
+              onChange={(e) => handleFiles(e.target.files)}
               className="hidden"
             />
 
@@ -234,12 +243,6 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
               </p>
             )}
 
-            {!isScanning && scanStatus && (
-              <p className="text-[11px] text-cyan-300 font-medium mt-1.5 bg-cyan-500/10 p-1.5 rounded-lg border border-cyan-500/20">
-                {scanStatus}
-              </p>
-            )}
-
             {courierImages.length > 0 && (
               <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
                 {courierImages.map((src, i) => (
@@ -249,13 +252,12 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
             )}
           </div>
 
-          {/* Form */}
           <form onSubmit={handleManualTrack} className="space-y-2">
             <div>
               <input
                 type="text"
                 value={trackingNumber}
-                onChange={e => {
+                onChange={(e) => {
                   setTrackingNumber(e.target.value);
                   setErrorMsg('');
                 }}
@@ -263,8 +265,8 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
                 className="w-full p-2.5 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white outline-none focus:border-cyan-500 font-mono tracking-wider"
               />
               {errorMsg && (
-                <div className="mt-1.5 p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[11px] flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <div className="mt-1.5 p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[11px] flex items-center gap-1.5 break-all">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{errorMsg}</span>
                 </div>
               )}
@@ -277,7 +279,6 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
             </button>
           </form>
 
-          {/* Result Card */}
           {selectedParcel && (
             <div className="mt-2 p-3.5 rounded-2xl bg-neutral-900/90 border border-white/10 space-y-3">
               <div className="flex justify-between items-center text-xs">

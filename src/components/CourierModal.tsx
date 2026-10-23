@@ -33,12 +33,44 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
 
   if (!isOpen) return null;
 
-  // Convert File directly to Base64 (original quality)
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
+  // Cloudflare की 1MB लिमिट के अंदर लाने के लिए स्मार्ट कंप्रेशन (नंबर बिल्कुल साफ रहेंगे)
+  const processImageToSafeBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (err) => reject(err);
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDimension = 1200;
+
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.8));
+          } else {
+            resolve(e.target?.result as string);
+          }
+        };
+        img.onerror = () => resolve('');
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => resolve('');
       reader.readAsDataURL(file);
     });
   };
@@ -57,23 +89,26 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
       const file = files[i];
       try {
         setScanStatus(`⚡ पर्ची ${i + 1}/${files.length} जाँची जा रही है...`);
-        const base64Data = await fileToBase64(file);
+        const base64Data = await processImageToSafeBase64(file);
 
-        let response = await fetch('/scan', {
+        if (!base64Data) {
+          failureMsg = 'फ़ोटो लोड नहीं हो सकी।';
+          continue;
+        }
+
+        const response = await fetch('/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imageBase64: base64Data }),
         });
 
-        if (response.status === 404) {
-          response = await fetch('/api/scan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64: base64Data }),
-          });
+        const rawText = await response.text();
+        let resData: any = {};
+        try {
+          resData = rawText ? JSON.parse(rawText) : {};
+        } catch {
+          failureMsg = `सर्वर से उत्तर नहीं मिला (${response.status})`;
         }
-
-        const resData = await response.json();
 
         if (resData.success && resData.data) {
           const item = resData.data;
@@ -87,11 +122,11 @@ export default function CourierModal({ isOpen, onClose, trackingNumber, setTrack
             destination: item.destination || 'ग्राहक का पता',
             currentLocation: item.currentLocation || 'डिलीवरी हब',
           });
-        } else {
-          failureMsg = resData.error || 'स्कैन नहीं हो सका';
+        } else if (resData.error) {
+          failureMsg = resData.error;
         }
       } catch (err: any) {
-        failureMsg = err.message || 'कनेक्शन समस्या';
+        failureMsg = err.message || 'नेटवर्क समस्या';
       }
     }
 

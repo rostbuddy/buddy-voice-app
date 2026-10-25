@@ -6,12 +6,18 @@ interface Env {
 
 export async function onRequestPost(context: { request: Request; env: Env }) {
   try {
-    const apiKey = context.env.GEMINI_API_KEY || context.env['Gemini-API'];
+    // 1. सारे संभव नामों से Key ढूँढना
+    const apiKey = 
+      context.env.GEMINI_API_KEY || 
+      context.env['Gemini-API'] || 
+      context.env.gemini_api_key ||
+      context.env.VITE_GEMINI_API_KEY;
     
     if (!apiKey) {
+      const availableKeys = Object.keys(context.env).filter(k => !k.startsWith('CF_')).join(', ');
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'API Key कॉन्फ़िगर नहीं है।' 
+        error: `Cloudflare में Key नहीं मिली। मिले हुए नाम: [${availableKeys || 'कोई नहीं'}]` 
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
@@ -32,7 +38,7 @@ export async function onRequestPost(context: { request: Request; env: Env }) {
     const promptText = `Analyze this Indian courier receipt/parcel label image carefully.
 Extract the REAL printed details accurately:
 {
-  "trackingId": "Exact consignment, barcode or waybill number (e.g. 20851310756383 or KDI 973394)",
+  "trackingId": "Exact consignment, barcode or waybill number",
   "carrier": "Courier brand (Delhivery, The Professional Couriers, Trackon, DTDC, Speed Post, Blue Dart)",
   "isDelivered": false,
   "statusText": "रास्ते में है (In Transit)",
@@ -98,4 +104,3 @@ Return ONLY valid JSON without markdown or code fences.`;
     });
   }
 }
-

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Package, X, Upload, Camera, Truck, AlertCircle, Clock, Calendar, Loader2 } from 'lucide-react';
+import { Package, X, Upload, Camera, CheckCircle2, Truck, AlertCircle, Clock, MapPin, User, Phone, Loader2 } from 'lucide-react';
 import { playVoiceClip } from '../utils/audio';
 
 interface Props {
@@ -9,306 +9,297 @@ interface Props {
   setTrackingNumber: (val: string) => void;
 }
 
-interface TrackedParcel {
+interface CourierDetails {
   trackingId: string;
   carrier: string;
-  isDelivered: boolean;
   statusText: string;
-  deliveryDate: string;
-  origin: string;
-  destination: string;
-  currentLocation: string;
+  isDelivered: boolean;
+  senderName?: string;
+  senderPhone?: string;
+  receiverName?: string;
+  receiverPhone?: string;
+  destination?: string;
+  origin?: string;
+  bookingDate?: string;
 }
 
 export default function CourierModal({ isOpen, onClose, trackingNumber, setTrackingNumber }: Props) {
   const [courierImages, setCourierImages] = useState<string[]>([]);
-  const [detectedParcels, setDetectedParcels] = useState<TrackedParcel[]>([]);
-  const [selectedParcel, setSelectedParcel] = useState<TrackedParcel | null>(null);
   const [scanStatus, setScanStatus] = useState<string>('');
+  const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [isScanning, setIsScanning] = useState(false);
+  const [courierResult, setCourierResult] = useState<CourierDetails | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
-  // शार्प और हल्की इमेज तैयार करना
-  const processImageToSafeBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
+  // File to Base64
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const maxDimension = 1200;
-
-          if (width > maxDimension || height > maxDimension) {
-            if (width > height) {
-              height = Math.round((height * maxDimension) / width);
-              width = maxDimension;
-            } else {
-              width = Math.round((width * maxDimension) / height);
-              height = maxDimension;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.85));
-          } else {
-            resolve(e.target?.result as string);
-          }
-        };
-        img.onerror = () => resolve('');
-        img.src = e.target?.result as string;
-      };
-      reader.onerror = () => resolve('');
       reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
     });
   };
 
-  // सीधे बैकएंड के बिना या बैकएंड के साथ दोनों तरीक़े से डेटा निकालना
-  const processImages = async (files: File[]) => {
-    setIsScanning(true);
-    setScanStatus('⚡ AI पर्ची पढ़ रहा है...');
-    setErrorMsg('');
-    setSelectedParcel(null);
-    setDetectedParcels([]);
-
-    const results: TrackedParcel[] = [];
-    let failureDetail = '';
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      try {
-        setScanStatus(`⚡ पर्ची ${i + 1}/${files.length} जाँची जा रही है...`);
-        const base64Data = await processImageToSafeBase64(file);
-
-        if (!base64Data) {
-          failureDetail = 'फ़ोटो लोड नहीं हो सकी।';
-          continue;
-        }
-
-        // सर्वर कॉल
-        let serverWorked = false;
-        try {
-          const response = await fetch('/scan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64: base64Data }),
-          });
-
-          if (response.ok) {
-            const resData = await response.json();
-            if (resData.success && resData.data) {
-              results.push(resData.data);
-              serverWorked = true;
-            }
-          }
-        } catch {
-          serverWorked = false;
-        }
-
-        // अगर सर्वर खाली जवाब दे, तो सीधे सुरक्षित फ़ॉलबैक (कार्ड हमेशा खुलेगा)
-        if (!serverWorked) {
-          // पर्ची का तुरंत स्मार्ट सत्यापन कार्ड
-          const fallbackData: TrackedParcel = {
-            trackingId: '20857492143',
-            carrier: 'Delhivery Express',
-            isDelivered: false,
-            statusText: 'रास्ते में है (In Transit)',
-            deliveryDate: 'आज की तारीख',
-            origin: 'बुकिंग केंद्र',
-            destination: 'डिलीवरी पता',
-            currentLocation: 'स्थानीय वितरण हब',
-          };
-          results.push(fallbackData);
-        }
-
-      } catch (err: any) {
-        failureDetail = err.message || 'त्रुटि हुई';
-      }
-    }
-
-    setIsScanning(false);
-
-    if (results.length > 0) {
-      setDetectedParcels(results);
-      setSelectedParcel(results[0]);
-      setTrackingNumber(results[0].trackingId);
-      setScanStatus('सफलतापूर्वक विवरण प्राप्त हुआ!');
-      playVoiceClip(results[0].isDelivered ? 'courier-delivered' : 'courier-transit');
-    } else {
-      setScanStatus('');
-      setErrorMsg(failureDetail || 'विवरण नहीं मिल सका।');
-    }
-  };
-
-  const handleFiles = (files: FileList | null) => {
+  // Real Gemini Vision Call
+  const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const newFiles = Array.from(files).slice(0, 5);
-    setCourierImages(newFiles.map((f) => URL.createObjectURL(f)));
-    processImages(newFiles);
+
+    setErrorMsg('');
+    setCourierResult(null);
+    setLoading(true);
+    setScanStatus('⚡ रसीद / पर्ची की जाँच की जा रही है...');
+
+    const file = files[0];
+    const previewUrl = URL.createObjectURL(file);
+    setCourierImages([previewUrl]);
+
+    try {
+      const base64Data = await fileToBase64(file);
+
+      const response = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64Data }),
+      });
+
+      const res = await response.json();
+
+      if (!response.ok || !res.success || !res.data) {
+        throw new Error(res.error || 'पर्ची से विवरण नहीं पढ़ा जा सका।');
+      }
+
+      const data = res.data;
+      const foundNumber = data.trackingId || '';
+
+      setTrackingNumber(foundNumber);
+      setCourierResult({
+        trackingId: foundNumber,
+        carrier: data.carrier || 'भारतीय कूरियर',
+        statusText: data.statusText || (data.isDelivered ? 'सफलतापूर्वक डिलीवर' : 'रास्ते में है'),
+        isDelivered: !!data.isDelivered,
+        senderName: data.senderName,
+        senderPhone: data.senderPhone,
+        receiverName: data.receiverName,
+        receiverPhone: data.receiverPhone,
+        destination: data.destination,
+        origin: data.origin,
+        bookingDate: data.deliveryDate || data.dateText,
+      });
+
+      setScanStatus(`✅ ${data.carrier || 'कूरियर'} पर्ची सफलतापूर्वक पहचानी गई!`);
+
+      if (data.isDelivered) {
+        playVoiceClip('courier-delivered');
+      } else {
+        playVoiceClip('courier-transit');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'पर्ची स्कैन करने में समस्या आई। साफ़ फ़ोटो चुनें।');
+      setScanStatus('');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleManualTrack = (e: React.FormEvent) => {
+  const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = trackingNumber.trim();
-    if (!clean) {
-      setErrorMsg('कृपया नंबर दर्ज करें');
+    const num = trackingNumber.trim();
+    if (!num) {
+      setErrorMsg('कृपया ट्रैकिंग या कंसाइनमेंट नंबर दर्ज करें');
       return;
     }
+
     setErrorMsg('');
-    const parcel: TrackedParcel = {
-      trackingId: clean,
-      carrier: clean.length === 9 ? 'Trackon Courier' : 'Delhivery Express',
-      isDelivered: false,
+    let carrierName = 'भारतीय कूरियर';
+    if (/^\d{12,14}$/.test(num)) carrierName = 'Delhivery';
+    else if (/^[A-Z]{3}\s*\d{6}$/i.test(num)) carrierName = 'The Professional Couriers (TPC)';
+    else if (/^[A-Z]{2}\d{9}IN$/i.test(num)) carrierName = 'India Post (Speed Post)';
+    else if (/^[A-Z]\d{8,9}$/i.test(num)) carrierName = 'DTDC Express';
+    else if (/^\d{8,11}$/.test(num)) carrierName = 'Blue Dart';
+
+    setCourierResult({
+      trackingId: num,
+      carrier: carrierName,
       statusText: 'रास्ते में है (In Transit)',
-      deliveryDate: 'तारीख सत्यापित',
-      origin: 'मूल बुकिंग केंद्र',
-      destination: 'ग्राहक का पता',
-      currentLocation: 'स्थानीय हब',
-    };
-    setSelectedParcel(parcel);
+      isDelivered: false,
+    });
     playVoiceClip('courier-transit');
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3">
-      <div className="w-full max-w-md bg-neutral-950 border border-white/10 rounded-3xl p-4 relative shadow-2xl max-h-[94vh] flex flex-col">
-        <div className="flex justify-between items-center mb-3">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3">
+      <div className="w-full max-w-md bg-neutral-950 border border-white/10 rounded-3xl p-5 relative shadow-2xl max-h-[92vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-4">
           <h2 className="text-base font-bold flex items-center gap-2 text-cyan-400">
-            <Package className="w-5 h-5" /> पार्सल ट्रैकिंग (AI विज़न)
+            <Package className="w-5 h-5" /> पार्सल व पर्ची ट्रैकिंग
           </h2>
           <button onClick={onClose} className="p-1.5 text-neutral-400 hover:text-white rounded-full bg-white/5">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-          <div className="p-3 rounded-2xl bg-neutral-900/60 border border-white/5">
-            <label className="text-xs text-neutral-300 block mb-2 font-medium">
-              पर्ची स्कैन करें या फ़ोटो चुनें:
-            </label>
+        {/* Upload / Camera Section */}
+        <div className="p-3.5 rounded-2xl bg-neutral-900/60 border border-white/5 mb-3">
+          <label className="text-xs text-neutral-300 block mb-2 font-medium">
+            पर्ची या बारकोड की फ़ोटो डालें (WhatsApp फ़ोटो मान्य):
+          </label>
 
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              ref={cameraInputRef}
-              onChange={(e) => handleFiles(e.target.files)}
-              className="hidden"
-            />
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              ref={fileInputRef}
-              onChange={(e) => handleFiles(e.target.files)}
-              className="hidden"
-            />
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            ref={cameraInputRef}
+            onChange={e => handleFiles(e.target.files)}
+            className="hidden"
+          />
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileInputRef}
+            onChange={e => handleFiles(e.target.files)}
+            className="hidden"
+          />
 
-            <div className="grid grid-cols-2 gap-2 mb-2">
-              <button
-                type="button"
-                onClick={() => cameraInputRef.current?.click()}
-                className="py-2.5 px-3 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-xs font-semibold flex items-center justify-center gap-2 active:scale-95 transition"
-              >
-                <Camera className="w-4 h-4 text-cyan-400" /> कैमरा खोलें
-              </button>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="py-2.5 px-3 rounded-xl bg-white/5 border border-white/10 text-neutral-300 text-xs font-semibold flex items-center justify-center gap-2 active:scale-95 transition"
-              >
-                <Upload className="w-4 h-4 text-neutral-400" /> गैलरी से चुनें
-              </button>
-            </div>
-
-            {isScanning && (
-              <p className="text-[11px] text-cyan-400 font-medium mt-1.5 bg-cyan-500/10 p-2 rounded-xl border border-cyan-500/20 flex items-center gap-2">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
-                {scanStatus}
-              </p>
-            )}
-
-            {courierImages.length > 0 && (
-              <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
-                {courierImages.map((src, i) => (
-                  <img key={i} src={src} alt="slip" className="w-11 h-11 rounded-lg object-cover border border-cyan-500/30" />
-                ))}
-              </div>
-            )}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => cameraInputRef.current?.click()}
+              className="py-2.5 px-3 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-xs font-semibold flex items-center justify-center gap-2 active:scale-95 transition"
+            >
+              <Camera className="w-4 h-4 text-cyan-400" /> कैमरा खोलें
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => fileInputRef.current?.click()}
+              className="py-2.5 px-3 rounded-xl bg-white/5 border border-white/10 text-neutral-300 text-xs font-semibold flex items-center justify-center gap-2 active:scale-95 transition"
+            >
+              <Upload className="w-4 h-4 text-neutral-400" /> फ़ोटो चुनें
+            </button>
           </div>
 
-          <form onSubmit={handleManualTrack} className="space-y-2">
-            <div>
-              <input
-                type="text"
-                value={trackingNumber}
-                onChange={(e) => {
-                  setTrackingNumber(e.target.value);
-                  setErrorMsg('');
-                }}
-                placeholder="पर्ची नंबर"
-                className="w-full p-2.5 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white outline-none focus:border-cyan-500 font-mono tracking-wider"
-              />
-              {errorMsg && (
-                <div className="mt-1.5 p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[11px] flex items-center gap-1.5 break-all">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{errorMsg}</span>
-                </div>
-              )}
+          {loading && (
+            <div className="flex items-center gap-2 mt-2 text-xs text-cyan-400 bg-cyan-500/10 p-2 rounded-xl border border-cyan-500/20">
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              <span>{scanStatus}</span>
             </div>
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-xl text-xs transition active:scale-98"
-            >
-              स्थिति देखें
-            </button>
-          </form>
+          )}
 
-          {selectedParcel && (
-            <div className="mt-2 p-3.5 rounded-2xl bg-neutral-900/90 border border-white/10 space-y-3">
-              <div className="flex justify-between items-center text-xs">
-                <span className="font-bold text-cyan-300">{selectedParcel.carrier}</span>
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
-                  <Truck className="w-3 h-3" />
-                  {selectedParcel.statusText}
-                </span>
-              </div>
+          {!loading && scanStatus && (
+            <p className="text-[11px] text-emerald-400 font-medium mt-2 bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/20">
+              {scanStatus}
+            </p>
+          )}
 
-              <div className="bg-black/50 p-2.5 rounded-xl border border-white/5 space-y-1.5 text-xs">
-                <div className="flex items-center justify-between text-neutral-300">
-                  <span className="text-neutral-400 flex items-center gap-1 text-[11px]">
-                    <Calendar className="w-3.5 h-3.5 text-cyan-400" /> तारीख:
-                  </span>
-                  <span className="font-semibold text-white">{selectedParcel.deliveryDate}</span>
-                </div>
-                <div className="flex items-center justify-between text-neutral-300 pt-1 border-t border-white/5">
-                  <span className="text-neutral-400 flex items-center gap-1 text-[11px]">
-                    <Clock className="w-3.5 h-3.5 text-emerald-400" /> स्थिति:
-                  </span>
-                  <span className="font-medium text-neutral-200">{selectedParcel.currentLocation}</span>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center text-[10px] text-neutral-400 pt-1 border-t border-white/5 font-mono">
-                <span>कंसाइनमेंट: {selectedParcel.trackingId}</span>
-                <span className="text-cyan-400">{selectedParcel.carrier}</span>
-              </div>
+          {courierImages.length > 0 && !loading && (
+            <div className="mt-2.5">
+              <img
+                src={courierImages[0]}
+                alt="slip"
+                className="w-full max-h-40 rounded-xl object-contain bg-black/40 border border-white/10"
+              />
             </div>
           )}
         </div>
+
+        {/* Manual Tracking Number */}
+        <form onSubmit={handleManualSubmit} className="space-y-2 mb-3">
+          <div>
+            <input
+              type="text"
+              value={trackingNumber}
+              onChange={e => {
+                setTrackingNumber(e.target.value);
+                setErrorMsg('');
+              }}
+              placeholder="कंसाइनमेंट या बारकोड नंबर दर्ज करें"
+              className="w-full p-2.5 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white outline-none focus:border-cyan-500 font-mono tracking-wider"
+            />
+            {errorMsg && (
+              <div className="mt-2 p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[11px] flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-xl text-xs transition active:scale-98 flex items-center justify-center gap-2"
+          >
+            स्थिति देखें
+          </button>
+        </form>
+
+        {/* Real Result Card */}
+        {courierResult && (
+          <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-3">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-bold text-cyan-300 text-sm">{courierResult.carrier}</span>
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${
+                  courierResult.isDelivered
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                }`}
+              >
+                {courierResult.isDelivered ? <CheckCircle2 className="w-3 h-3" /> : <Truck className="w-3 h-3" />}
+                {courierResult.statusText}
+              </span>
+            </div>
+
+            <div className="bg-neutral-900/80 p-3 rounded-xl border border-white/5 space-y-2 text-xs">
+              <div className="flex justify-between items-center font-mono text-[11px]">
+                <span className="text-neutral-400">नंबर:</span>
+                <span className="font-bold text-white tracking-wider">{courierResult.trackingId}</span>
+              </div>
+
+              {courierResult.receiverName && (
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-neutral-400 flex items-center gap-1">
+                    <User className="w-3 h-3 text-cyan-400" /> प्राप्तकर्ता:
+                  </span>
+                  <span className="text-white font-medium">{courierResult.receiverName}</span>
+                </div>
+              )}
+
+              {courierResult.receiverPhone && (
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-neutral-400 flex items-center gap-1">
+                    <Phone className="w-3 h-3 text-emerald-400" /> मोबाइल:
+                  </span>
+                  <span className="text-white font-mono">{courierResult.receiverPhone}</span>
+                </div>
+              )}
+
+              {courierResult.destination && (
+                <div className="flex justify-between items-start text-[11px]">
+                  <span className="text-neutral-400 flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-amber-400" /> गंतव्य:
+                  </span>
+                  <span className="text-neutral-200 text-right max-w-[65%]">{courierResult.destination}</span>
+                </div>
+              )}
+
+              {courierResult.bookingDate && (
+                <div className="flex justify-between items-center text-[10px] pt-1 border-t border-white/5 text-neutral-400">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> तारीख:
+                  </span>
+                  <span>{courierResult.bookingDate}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
-            }
+}

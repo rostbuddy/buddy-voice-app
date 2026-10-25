@@ -4,66 +4,45 @@ interface Env {
   [key: string]: any;
 }
 
-export async function onRequest(context: { request: Request; env: Env }) {
-  // CORS Headers
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json',
-  };
-
-  if (context.request.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
+export async function onRequestPost(context: { request: Request; env: Env }) {
   try {
     const apiKey = context.env.GEMINI_API_KEY || context.env['Gemini-API'];
     
     if (!apiKey) {
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'Cloudflare में API Key नहीं मिली।' 
+        error: 'API Key कॉन्फ़िगर नहीं है।' 
       }), {
-        status: 200,
-        headers: corsHeaders,
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    let imageBase64 = '';
-    try {
-      const body = await context.request.json() as any;
-      imageBase64 = body?.imageBase64 || '';
-    } catch {
-      return new Response(JSON.stringify({ success: false, error: 'फ़ोटो डेटा खाली है।' }), {
-        status: 200,
-        headers: corsHeaders,
-      });
-    }
-
+    const { imageBase64 } = (await context.request.json()) as { imageBase64?: string };
     if (!imageBase64) {
-      return new Response(JSON.stringify({ success: false, error: 'कृपया फ़ोटो चुनें।' }), {
-        status: 200,
-        headers: corsHeaders,
+      return new Response(JSON.stringify({ success: false, error: 'फ़ोटो डेटा नहीं मिला।' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
       });
     }
 
     const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
-    const promptText = `Indian courier label reader.
-Extract: tracking number/waybill, courier company name, delivery status.
-Return ONLY valid JSON:
+    const promptText = `Analyze this Indian courier receipt/parcel label image carefully.
+Extract the REAL printed details accurately:
 {
-  "trackingId": "extracted digits or consignment",
-  "carrier": "Courier Name (e.g. Delhivery, Trackon, Speed Post)",
+  "trackingId": "Exact consignment, barcode or waybill number (e.g. 20851310756383 or KDI 973394)",
+  "carrier": "Courier brand (Delhivery, The Professional Couriers, Trackon, DTDC, Speed Post, Blue Dart)",
   "isDelivered": false,
   "statusText": "रास्ते में है (In Transit)",
-  "deliveryDate": "आज की तारीख",
-  "origin": "मूल केंद्र",
-  "destination": "ग्राहक पता",
-  "currentLocation": "ट्रांज़िट हब"
-}`;
+  "receiverName": "Name of receiver/consignee if written",
+  "receiverPhone": "Phone number if written",
+  "destination": "Destination city, state, or PIN code",
+  "origin": "Origin hub or city if written",
+  "deliveryDate": "Printed date if visible"
+}
+Return ONLY valid JSON without markdown or code fences.`;
 
     const payload = {
       contents: [
@@ -93,51 +72,29 @@ Return ONLY valid JSON:
       body: JSON.stringify(payload),
     });
 
-    const rawGeminiText = await geminiRes.text();
-
     if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
       return new Response(JSON.stringify({ 
         success: false, 
-        error: `Gemini API Status ${geminiRes.status}: ${rawGeminiText.slice(0, 80)}` 
+        error: `Gemini API Status ${geminiRes.status}: ${errText.slice(0, 120)}` 
       }), {
-        status: 200,
-        headers: corsHeaders,
+        status: 502,
+        headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    let parsed: any = {};
-    try {
-      const geminiJson = JSON.parse(rawGeminiText);
-      const textPart = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '{}';
-      parsed = JSON.parse(textPart);
-    } catch {
-      parsed = {};
-    }
+    const geminiData: any = await geminiRes.json();
+    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '{}';
+    const parsed = JSON.parse(rawText);
 
-    return new Response(JSON.stringify({ 
-      success: true, 
-      data: {
-        trackingId: parsed.trackingId && parsed.trackingId !== 'extracted digits or consignment' ? parsed.trackingId : '20857492143',
-        carrier: parsed.carrier || 'Delhivery Express',
-        isDelivered: !!parsed.isDelivered,
-        statusText: parsed.statusText || 'रास्ते में है (In Transit)',
-        deliveryDate: parsed.deliveryDate || 'आज की तारीख',
-        origin: parsed.origin || 'बुकिंग हब',
-        destination: parsed.destination || 'डिलीवरी पता',
-        currentLocation: parsed.currentLocation || 'डिलीवरी हब'
-      }
-    }), {
+    return new Response(JSON.stringify({ success: true, data: parsed }), {
       status: 200,
-      headers: corsHeaders,
+      headers: { 'Content-Type': 'application/json' },
     });
-
   } catch (err: any) {
-    return new Response(JSON.stringify({ 
-      success: false, 
-      error: `Server Error: ${err.message}` 
-    }), {
-      status: 200,
-      headers: corsHeaders,
+    return new Response(JSON.stringify({ success: false, error: err.message || 'Server Error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
     });
   }
 }

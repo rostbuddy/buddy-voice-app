@@ -33,7 +33,7 @@ export async function onRequestPost(context: { request: Request; env: Env }) {
     }
 
     const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`; 
 
     const promptText = `Analyze this Indian courier receipt/parcel label image carefully.
 Extract the REAL printed details accurately:
